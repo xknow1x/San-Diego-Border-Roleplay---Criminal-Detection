@@ -1,0 +1,645 @@
+-- =====================================================================
+-- SAN DIEGO BORDER ROLEPLAY - HIGH-FPS TACTICAL & TARGET SUITE
+-- Performance Engineered: Localized Scope + Zero-GC Rendering Loops
+-- =====================================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+
+local lp = Players.LocalPlayer
+local mouse = lp:GetMouse()
+
+-- Fast Localized Global Cache (Huge FPS Boost in Luau)
+local Vector2_new = Vector2.new
+local Vector3_zero = Vector3.zero
+local Color3_fromRGB = Color3.fromRGB
+local math_floor = math.floor
+local math_clamp = math.clamp
+local math_max = math.max
+local math_huge = math.huge
+local string_format = string.format
+local string_upper = string.upper
+local string_find = string.find
+local table_insert = table.insert
+local pcall = pcall
+local ipairs = ipairs
+
+-- Safe Mouse Location Helper
+local function getMousePos()
+    local ok, loc = pcall(function() return UserInputService:GetMouseLocation() end)
+    if ok and loc and typeof(loc) == "Vector2" then
+        return loc
+    end
+    if mouse then
+        return Vector2_new(mouse.X, mouse.Y)
+    end
+    return Vector2_new(0, 0)
+end
+
+-- Safe Mouse Click State Helper
+local function isLeftMouseDown()
+    if ismouse1pressed then
+        local ok, pressed = pcall(ismouse1pressed)
+        if ok then return pressed end
+    end
+    local ok, pressed = pcall(function()
+        return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+    end)
+    if ok then return pressed end
+    return false
+end
+
+-- Safe WorldToScreen fallback
+local WorldToScreen = WorldToScreen or function(pos)
+    local cam = workspace.CurrentCamera
+    if cam and cam:IsA("Camera") then
+        local screenPos, onScreen = cam:WorldToViewportPoint(pos)
+        return Vector2_new(screenPos.X, screenPos.Y), onScreen
+    end
+    return Vector2_new(0, 0), false
+end
+
+-- Font Helper
+local DEFAULT_FONT = (Drawing.Font and Drawing.Font.Plex) or 2
+
+local function formatText(textObj, str, size, color, center, font)
+    textObj.Text = str or ""
+    textObj.Size = size or 12
+    textObj.Color = color or Color3_fromRGB(255, 255, 255)
+    textObj.Center = center or false
+    textObj.Outline = true
+    pcall(function() textObj.Font = font or DEFAULT_FONT end)
+end
+
+-- Safe Notification Helper
+local function notify(title, text, duration)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = title,
+            Text = text,
+            Duration = duration or 3
+        })
+    end)
+end
+
+-- Configuration & State
+local POOL_SIZE = 48
+local MAX_ROWS = 10
+local BORDER_US_X_LIMIT = 2500 -- US Territory boundary (X < 2500)
+local running = true
+local scrollOffset = 0
+
+local windowPos = Vector2_new(80, 140)
+local windowSize = Vector2_new(350, 410)
+local isDragging = false
+local dragOffset = Vector2_new(0, 0)
+local lastClickState = false
+local selectedPlayer = nil
+
+local cachedTargets = {}
+local cachedSuspectPlayers = {}
+
+-- Pre-allocate 3D ESP Drawing Pool
+local pool = {}
+for i = 1, POOL_SIZE do
+    local box = Drawing.new("Square")
+    box.Thickness = 1.5
+    box.Filled = false
+    box.Visible = false
+
+    local tag = Drawing.new("Text")
+    tag.Size = 12
+    tag.Center = true
+    tag.Outline = true
+    tag.Visible = false
+    pcall(function() tag.Font = DEFAULT_FONT end)
+
+    pool[i] = { box = box, tag = tag }
+end
+
+-- Custom Team Colors Mapping
+local TEAM_COLORS = {
+    ["police"] = Color3_fromRGB(0, 170, 255),
+    ["patrol"] = Color3_fromRGB(0, 170, 255),
+    ["border patrol"] = Color3_fromRGB(0, 170, 255),
+    ["usbp"] = Color3_fromRGB(0, 170, 255),
+    
+    ["swat"] = Color3_fromRGB(0, 50, 180),
+    ["bortac"] = Color3_fromRGB(0, 50, 180),
+    ["srt"] = Color3_fromRGB(0, 50, 180),
+    
+    ["sheriff"] = Color3_fromRGB(30, 144, 255),
+    ["fbi"] = Color3_fromRGB(20, 40, 110),
+    ["federal"] = Color3_fromRGB(20, 40, 110),
+    
+    ["military"] = Color3_fromRGB(40, 130, 50),
+    ["national guard"] = Color3_fromRGB(40, 130, 50),
+    
+    ["fire"] = Color3_fromRGB(255, 80, 80),
+    ["fire department"] = Color3_fromRGB(255, 80, 80),
+    ["ems"] = Color3_fromRGB(255, 180, 0),
+    ["paramedic"] = Color3_fromRGB(255, 180, 0),
+    
+    ["dot"] = Color3_fromRGB(255, 140, 0),
+    
+    ["mexico"] = Color3_fromRGB(40, 180, 80),
+    ["mexican citizen"] = Color3_fromRGB(40, 180, 80),
+    ["cartel"] = Color3_fromRGB(180, 30, 30),
+    
+    ["civilian"] = Color3_fromRGB(220, 220, 220),
+}
+
+local function getCustomTeamColor(team)
+    if not team then return Color3_fromRGB(200, 200, 200) end
+    local name = team.Name:lower()
+    
+    for key, color in pairs(TEAM_COLORS) do
+        if string_find(name, key) then
+            return color
+        end
+    end
+    
+    if team.TeamColor then
+        return team.TeamColor.Color
+    end
+    return Color3_fromRGB(200, 200, 200)
+end
+
+local function isLawEnforcement(plr)
+    if not plr or not plr.Parent then return false end
+    local team = plr.Team
+    if not team then return false end
+    local name = team.Name:lower()
+    return string_find(name, "police") or string_find(name, "bortac") or string_find(name, "patrol") or string_find(name, "fbi") or string_find(name, "swat") or string_find(name, "sheriff")
+end
+
+-- Helper: Lock onto Nearest US Suspect
+local function getNearestUsSuspect()
+    local myChar = lp.Character
+    local myRoot = (myChar and myChar.Parent) and myChar:FindFirstChild("HumanoidRootPart")
+    local myPos = myRoot and myRoot.Position or Vector3_zero
+    
+    local nearest = nil
+    local shortestDist = math_huge
+    
+    for _, item in ipairs(cachedSuspectPlayers) do
+        local plr = item.player
+        if plr and plr.Parent and plr.Character and plr.Character.Parent then
+            local root = plr.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                local dist = (root.Position - myPos).Magnitude
+                if dist < shortestDist then
+                    shortestDist = dist
+                    nearest = plr
+                end
+            end
+        end
+    end
+    return nearest, shortestDist
+end
+
+-- ---------------------------------------------------------------------
+-- POLISHED GUI PANELS
+-- ---------------------------------------------------------------------
+local panelBg = Drawing.new("Square")
+panelBg.Size = windowSize
+panelBg.Color = Color3_fromRGB(15, 18, 24)
+panelBg.Filled = true
+panelBg.Transparency = 0.96
+panelBg.Visible = true
+
+local panelBorder = Drawing.new("Square")
+panelBorder.Size = windowSize
+panelBorder.Color = Color3_fromRGB(45, 55, 75)
+panelBorder.Filled = false
+panelBorder.Thickness = 1.5
+panelBorder.Visible = true
+
+local panelHeader = Drawing.new("Square")
+panelHeader.Size = Vector2_new(windowSize.X, 32)
+panelHeader.Color = Color3_fromRGB(24, 29, 40)
+panelHeader.Filled = true
+panelHeader.Visible = true
+
+local panelHeaderAccent = Drawing.new("Square")
+panelHeaderAccent.Size = Vector2_new(windowSize.X, 2)
+panelHeaderAccent.Color = Color3_fromRGB(255, 200, 50)
+panelHeaderAccent.Filled = true
+panelHeaderAccent.Visible = true
+
+local panelTitle = Drawing.new("Text")
+formatText(panelTitle, "[+] US SUSPECT TARGET CONTROL", 13, Color3_fromRGB(255, 215, 0), false)
+
+local statusLabel = Drawing.new("Text")
+formatText(statusLabel, "Target: None", 11, Color3_fromRGB(180, 195, 215), false)
+
+local listRangeLabel = Drawing.new("Text")
+formatText(listRangeLabel, "Suspects US (0-0 of 0)", 11, Color3_fromRGB(130, 160, 200), false)
+
+-- Symmetrical Scroll Buttons (54x20 px)
+local SCROLL_BTN_W = 54
+local SCROLL_BTN_H = 20
+
+local btnScrollUpBg = Drawing.new("Square")
+btnScrollUpBg.Size = Vector2_new(SCROLL_BTN_W, SCROLL_BTN_H)
+btnScrollUpBg.Color = Color3_fromRGB(45, 55, 72)
+btnScrollUpBg.Filled = true
+btnScrollUpBg.Visible = true
+
+local btnScrollUpText = Drawing.new("Text")
+formatText(btnScrollUpText, "UP", 10, Color3_fromRGB(240, 245, 255), true)
+
+local btnScrollDnBg = Drawing.new("Square")
+btnScrollDnBg.Size = Vector2_new(SCROLL_BTN_W, SCROLL_BTN_H)
+btnScrollDnBg.Color = Color3_fromRGB(45, 55, 72)
+btnScrollDnBg.Filled = true
+btnScrollDnBg.Visible = true
+
+local btnScrollDnText = Drawing.new("Text")
+formatText(btnScrollDnText, "DOWN", 10, Color3_fromRGB(240, 245, 255), true)
+
+-- Action Buttons (3-Button Balanced Layout)
+local BTN_WIDTH = 106
+local BTN_HEIGHT = 26
+
+local btnCopyBg = Drawing.new("Square")
+btnCopyBg.Size = Vector2_new(BTN_WIDTH, BTN_HEIGHT)
+btnCopyBg.Color = Color3_fromRGB(35, 120, 200)
+btnCopyBg.Filled = true
+btnCopyBg.Visible = true
+
+local btnCopyText = Drawing.new("Text")
+formatText(btnCopyText, "[COPY NAME]", 10, Color3_fromRGB(255, 255, 255), true)
+
+local btnNearestBg = Drawing.new("Square")
+btnNearestBg.Size = Vector2_new(BTN_WIDTH, BTN_HEIGHT)
+btnNearestBg.Color = Color3_fromRGB(0, 150, 160)
+btnNearestBg.Filled = true
+btnNearestBg.Visible = true
+
+local btnNearestText = Drawing.new("Text")
+formatText(btnNearestText, "[NEAREST]", 10, Color3_fromRGB(255, 255, 255), true)
+
+local btnUnstuckBg = Drawing.new("Square")
+btnUnstuckBg.Size = Vector2_new(BTN_WIDTH, BTN_HEIGHT)
+btnUnstuckBg.Color = Color3_fromRGB(210, 110, 20)
+btnUnstuckBg.Filled = true
+btnUnstuckBg.Visible = true
+
+local btnUnstuckText = Drawing.new("Text")
+formatText(btnUnstuckText, "[UNSTUCK]", 10, Color3_fromRGB(255, 255, 255), true)
+
+-- Player Rows
+local playerRows = {}
+for i = 1, MAX_ROWS do
+    local rBg = Drawing.new("Square")
+    rBg.Size = Vector2_new(windowSize.X - 16, 24)
+    rBg.Color = Color3_fromRGB(24, 30, 40)
+    rBg.Filled = true
+    rBg.Visible = true
+
+    local rText = Drawing.new("Text")
+    formatText(rText, "", 11, Color3_fromRGB(230, 235, 245), false)
+
+    playerRows[i] = { bg = rBg, text = rText, player = nil }
+end
+
+local function isInside(pos, size, point)
+    return point.X >= pos.X and point.X <= pos.X + size.X and point.Y >= pos.Y and point.Y <= pos.Y + size.Y
+end
+
+-- ---------------------------------------------------------------------
+-- GLOBAL ROSTER HUD DISPLAY
+-- ---------------------------------------------------------------------
+local hudTitle = Drawing.new("Text")
+formatText(hudTitle, "=== US SIDE WANTED & ILLEGAL ROSTER ===", 13, Color3_fromRGB(255, 215, 0), false)
+hudTitle.Position = Vector2_new(20, 140)
+hudTitle.Visible = true
+
+local hudList = Drawing.new("Text")
+formatText(hudList, "", 11, Color3_fromRGB(240, 240, 240), false)
+hudList.Position = Vector2_new(20, 160)
+hudList.Visible = true
+
+-- ---------------------------------------------------------------------
+-- BACKGROUND COLLECTOR (3 Hz) - Pre-computes & Caches Calculations
+-- ---------------------------------------------------------------------
+task.spawn(function()
+    while running do
+        local espList = {}
+        local suspectPlrs = {}
+        local rosterText = ""
+        local count = 0
+
+        local myChar = lp.Character
+        local myRoot = (myChar and myChar.Parent) and myChar:FindFirstChild("HumanoidRootPart")
+        local myPos = myRoot and myRoot.Position or Vector3_zero
+
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr and plr.Parent and plr ~= lp then
+                local isCop = isLawEnforcement(plr)
+
+                local wantedLevel = plr:GetAttribute("WantedLevel") or 0
+                local stars = math_clamp(math_floor(wantedLevel / 200), 0, 5)
+                local fromMexico = plr:GetAttribute("FromMexico") == true
+                local legallyCrossed = plr:GetAttribute("LegallyCrossedBorder") == true
+                local granted = plr:GetAttribute("Granted") == true
+                local isIllegalCrosser = fromMexico and not legallyCrossed and not granted
+
+                local char = plr.Character
+                local rootPart = (char and char.Parent) and char:FindFirstChild("HumanoidRootPart")
+                local isInsideUS = rootPart and (rootPart.Position.X < BORDER_US_X_LIMIT) or false
+                local isDecayedCrosser = isIllegalCrosser and (wantedLevel == 0) and (plr.Team and plr.Team.Name == "Civilian")
+
+                local dist = 0
+                if rootPart then
+                    dist = math_floor((rootPart.Position - myPos).Magnitude)
+                end
+
+                -- US Territory Suspect Filter
+                if not isCop and isInsideUS and (wantedLevel > 0 or isIllegalCrosser) then
+                    table_insert(suspectPlrs, {
+                        player = plr,
+                        wantedLevel = wantedLevel,
+                        stars = stars,
+                        dist = dist,
+                        teamName = plr.Team and plr.Team.Name or "Civilian"
+                    })
+                end
+
+                -- Build Roster HUD Text (US Side Only)
+                if isInsideUS and (wantedLevel > 0 or isDecayedCrosser) then
+                    count = count + 1
+                    if count <= 12 then
+                        if wantedLevel > 0 then
+                            rosterText = rosterText .. string_format("[*%d] %s | %d pts | Team: %s\n", stars, plr.Name, wantedLevel, plr.Team and plr.Team.Name or "Civilian")
+                        elseif isDecayedCrosser then
+                            rosterText = rosterText .. string_format("[SEARCH TABLET] %s | Illegal Crosser (US)\n", plr.Name)
+                        end
+                    end
+                end
+
+                -- 3D ESP Targets (Displays Custom Colors per Team)
+                if char and char.Parent then
+                    local head = char:FindFirstChild("Head")
+                    local root = char:FindFirstChild("HumanoidRootPart")
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+
+                    if head and root and hum and hum.Health > 0 then
+                        local teamName = plr.Team and plr.Team.Name or "No Team"
+                        local teamColor = getCustomTeamColor(plr.Team)
+
+                        local tagText = ""
+                        local tagColor = teamColor
+                        local upperTeam = string_upper(teamName)
+
+                        if wantedLevel > 0 then
+                            tagColor = Color3_fromRGB(255, 60, 60)
+                            tagText = string_format("[%s] [*%d] %s (%d pts) - %dm", upperTeam, stars, plr.Name, wantedLevel, dist)
+                        elseif isDecayedCrosser and isInsideUS then
+                            tagColor = Color3_fromRGB(255, 170, 0)
+                            tagText = string_format("[%s] [SEARCH TABLET] %s (%dm)", upperTeam, plr.Name, dist)
+                        else
+                            tagText = string_format("[%s] %s (%dm)", upperTeam, plr.Name, dist)
+                        end
+
+                        table_insert(espList, { head = head, root = root, tagText = tagText, color = tagColor })
+                    end
+                end
+            end
+        end
+
+        if rosterText == "" then rosterText = "No Wanted Players currently active on US side." end
+        hudList.Text = rosterText
+
+        cachedTargets = espList
+        cachedSuspectPlayers = suspectPlrs
+        task.wait(0.33)
+    end
+end)
+
+-- ---------------------------------------------------------------------
+-- RENDER LOOP (Zero GC Memory Allocations for Maximum FPS)
+-- ---------------------------------------------------------------------
+RunService.RenderStepped:Connect(function()
+    if not running then return end
+
+    local mPos = getMousePos()
+    local isMouseDown = isLeftMouseDown()
+
+    -- Clean up destroyed target
+    if selectedPlayer and (not selectedPlayer.Parent or not selectedPlayer:IsA("Player")) then
+        selectedPlayer = nil
+    end
+
+    local suspectPlrs = cachedSuspectPlayers
+    local totalSuspects = #suspectPlrs
+    local maxOffset = math_max(0, totalSuspects - MAX_ROWS)
+
+    -- Mouse Click & Drag Logic
+    if isMouseDown and not lastClickState then
+        if isInside(windowPos, Vector2_new(windowSize.X, 32), mPos) then
+            isDragging = true
+            dragOffset = Vector2_new(mPos.X - windowPos.X, mPos.Y - windowPos.Y)
+        else
+            -- Scroll UP Button Click
+            if isInside(btnScrollUpBg.Position, btnScrollUpBg.Size, mPos) then
+                scrollOffset = math_clamp(scrollOffset - 1, 0, maxOffset)
+            end
+            -- Scroll DOWN Button Click
+            if isInside(btnScrollDnBg.Position, btnScrollDnBg.Size, mPos) then
+                scrollOffset = math_clamp(scrollOffset + 1, 0, maxOffset)
+            end
+
+            -- Click Player Row (AUTO-SELECT + AUTO-COPY TO CLIPBOARD)
+            for i = 1, MAX_ROWS do
+                local row = playerRows[i]
+                if row.player and row.player.Parent and isInside(row.bg.Position, row.bg.Size, mPos) then
+                    selectedPlayer = row.player
+                    if setclipboard then
+                        setclipboard(row.player.Name)
+                        notify("Target Selected", "Selected & Copied '" .. row.player.Name .. "' for Tablet!", 2)
+                    else
+                        notify("Target Selected", "Selected: " .. row.player.Name, 2)
+                    end
+                    break
+                end
+            end
+
+            -- Action Button 1: Copy Selected Name
+            if isInside(btnCopyBg.Position, btnCopyBg.Size, mPos) then
+                if selectedPlayer and selectedPlayer.Parent then
+                    if setclipboard then
+                        setclipboard(selectedPlayer.Name)
+                        notify("Tablet Helper", "Copied '" .. selectedPlayer.Name .. "'! Press Ctrl+V in Tablet.", 3)
+                    end
+                else
+                    notify("Warning", "Click a suspect from the list first!", 2)
+                end
+            end
+
+            -- Action Button 2: Lock onto Nearest Suspect
+            if isInside(btnNearestBg.Position, btnNearestBg.Size, mPos) then
+                local nearPlr, nearDist = getNearestUsSuspect()
+                if nearPlr then
+                    selectedPlayer = nearPlr
+                    if setclipboard then setclipboard(nearPlr.Name) end
+                    notify("Nearest Target", "Selected & Copied '" .. nearPlr.Name .. "' (" .. math_floor(nearDist) .. "m)!", 3)
+                else
+                    notify("Nearest Target", "No suspects found on US side!", 2)
+                end
+            end
+
+            -- Action Button 3: Unstuck Vehicle
+            if isInside(btnUnstuckBg.Position, btnUnstuckBg.Size, mPos) then
+                task.spawn(function()
+                    local remotes = ReplicatedStorage:FindFirstChild("__remotes")
+                    if remotes and remotes:FindFirstChild("VehicleService") and remotes.VehicleService:FindFirstChild("UnstuckVehicle") then
+                        remotes.VehicleService.UnstuckVehicle:FireServer()
+                        notify("Vehicle", "Vehicle Unstuck Request Sent!", 2)
+                    end
+                end)
+            end
+        end
+    elseif not isMouseDown then
+        isDragging = false
+    end
+
+    if isDragging then
+        windowPos = Vector2_new(mPos.X - dragOffset.X, mPos.Y - dragOffset.Y)
+    end
+
+    lastClickState = isMouseDown
+
+    -- Position Frame Elements
+    panelBg.Position = windowPos
+    panelBorder.Position = windowPos
+    panelHeader.Position = windowPos
+    panelHeaderAccent.Position = windowPos
+    panelTitle.Position = Vector2_new(windowPos.X + 12, windowPos.Y + 8)
+    statusLabel.Position = Vector2_new(windowPos.X + 12, windowPos.Y + 38)
+
+    local myChar = lp.Character
+    local myRoot = (myChar and myChar.Parent) and myChar:FindFirstChild("HumanoidRootPart")
+    local myPos = myRoot and myRoot.Position or Vector3_zero
+
+    local selChar = selectedPlayer and selectedPlayer.Parent and selectedPlayer.Character
+    local selRoot = (selChar and selChar.Parent) and selChar:FindFirstChild("HumanoidRootPart")
+
+    if selectedPlayer and selRoot then
+        local dist = math_floor((selRoot.Position - myPos).Magnitude)
+        statusLabel.Text = string_format("Target: %s (%dm) - Copied! Press Ctrl+V in Tablet", selectedPlayer.Name, dist)
+        statusLabel.Color = Color3_fromRGB(255, 215, 0)
+    elseif selectedPlayer then
+        statusLabel.Text = "Target: " .. selectedPlayer.Name .. " - Copied! Press Ctrl+V in Tablet"
+        statusLabel.Color = Color3_fromRGB(255, 215, 0)
+    else
+        statusLabel.Text = "Target: None (Click suspect row below to select & copy)"
+        statusLabel.Color = Color3_fromRGB(160, 175, 195)
+    end
+
+    scrollOffset = math_clamp(scrollOffset, 0, maxOffset)
+    local startRange = (totalSuspects > 0) and (scrollOffset + 1) or 0
+    local endRange = math.min(scrollOffset + MAX_ROWS, totalSuspects)
+
+    local subHeaderY = windowPos.Y + 56
+    listRangeLabel.Text = string_format("Suspects US (%d-%d of %d)", startRange, endRange, totalSuspects)
+    listRangeLabel.Position = Vector2_new(windowPos.X + 12, subHeaderY + 2)
+
+    -- Scroll Buttons Position
+    btnScrollUpBg.Position = Vector2_new(windowPos.X + 224, subHeaderY)
+    btnScrollUpText.Position = Vector2_new(windowPos.X + 251, subHeaderY + 4)
+
+    btnScrollDnBg.Position = Vector2_new(windowPos.X + 284, subHeaderY)
+    btnScrollDnText.Position = Vector2_new(windowPos.X + 311, subHeaderY + 4)
+
+    -- Render Player Rows (Fast Cache Read)
+    local startY = windowPos.Y + 82
+    for i = 1, MAX_ROWS do
+        local row = playerRows[i]
+        local item = suspectPlrs[i + scrollOffset]
+        local plr = item and item.player
+
+        row.player = plr
+
+        if item and plr and plr.Parent then
+            local rPos = Vector2_new(windowPos.X + 8, startY + ((i - 1) * 26))
+            row.bg.Position = rPos
+            row.text.Position = Vector2_new(rPos.X + 8, rPos.Y + 5)
+
+            if plr == selectedPlayer then
+                row.bg.Color = Color3_fromRGB(45, 85, 135)
+                row.text.Color = Color3_fromRGB(255, 235, 120)
+                row.text.Text = string_format("> [%s] %s (%dm)  |  *%d (%d pts)", string_upper(item.teamName), plr.Name, item.dist, item.stars, item.wantedLevel)
+            else
+                row.bg.Color = Color3_fromRGB(24, 30, 40)
+                row.text.Color = Color3_fromRGB(220, 225, 235)
+                row.text.Text = string_format("  [%s] %s (%dm)  |  *%d (%d pts)", string_upper(item.teamName), plr.Name, item.dist, item.stars, item.wantedLevel)
+            end
+
+            row.bg.Visible = true
+            row.text.Visible = true
+        else
+            row.bg.Visible = false
+            row.text.Visible = false
+        end
+    end
+
+    -- Render Action Buttons (Bottom Row)
+    local btnY = windowPos.Y + windowSize.Y - 34
+    
+    btnCopyBg.Position = Vector2_new(windowPos.X + 8, btnY)
+    btnCopyText.Position = Vector2_new(windowPos.X + 61, btnY + 7)
+
+    btnNearestBg.Position = Vector2_new(windowPos.X + 122, btnY)
+    btnNearestText.Position = Vector2_new(windowPos.X + 175, btnY + 7)
+
+    btnUnstuckBg.Position = Vector2_new(windowPos.X + 236, btnY)
+    btnUnstuckText.Position = Vector2_new(windowPos.X + 289, btnY + 7)
+
+    -- Fast 3D ESP Rendering Loop
+    local currentTargets = cachedTargets
+    local rendered = 0
+
+    for i = 1, #currentTargets do
+        if rendered >= POOL_SIZE then break end
+        local t = currentTargets[i]
+
+        if t.head and t.head.Parent and t.root and t.root.Parent then
+            local success1, top, v1 = pcall(function()
+                return WorldToScreen(t.head.Position + Vector3_new(0, 0.7, 0))
+            end)
+            local success2, bot, v2 = pcall(function()
+                return WorldToScreen(t.root.Position - Vector3_new(0, 3.2, 0))
+            end)
+
+            if success1 and success2 and v1 and v2 then
+                rendered = rendered + 1
+                local elem = pool[rendered]
+                
+                local h = math_max(4, bot.Y - top.Y)
+                local w = math_max(3, h * 0.5)
+
+                elem.box.Position = Vector2_new(top.X - w * 0.5, top.Y)
+                elem.box.Size = Vector2_new(w, h)
+                elem.box.Color = t.color
+
+                elem.tag.Text = t.tagText
+                elem.tag.Position = Vector2_new(top.X, top.Y - 14)
+
+                elem.box.Visible = true
+                elem.tag.Visible = true
+            end
+        end
+    end
+
+    for i = rendered + 1, POOL_SIZE do
+        pool[i].box.Visible = false
+        pool[i].tag.Visible = false
+    end
+end)
+
+notify("Tactical Suite Loaded", "High-FPS performance optimization active!", 4)
