@@ -1,119 +1,216 @@
 -- =====================================================================
--- SAN DIEGO BORDER ROLEPLAY - POLISHED TACTICAL & TARGET SUITE
--- PERFORMANCE OPTIMIZED - All features preserved
+-- SAN DIEGO BORDER ROLEPLAY - ULTRA TACTICAL & TARGET SUITE v2.0
+-- Civilians Only | Boat Smuggling Detection | Apartment Look | ESP
 -- =====================================================================
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 local UserInputService = game:GetService("UserInputService")
 
 local lp = Players.LocalPlayer
 local mouse = lp:GetMouse()
 
--- Pre-cached Color3 constants (avoid repeated fromRGB in loops)
-local CLR_SELECTED_BG = Color3.fromRGB(45, 85, 135)
-local CLR_SELECTED_TEXT = Color3.fromRGB(255, 235, 120)
-local CLR_ROW_BG = Color3.fromRGB(24, 30, 40)
-local CLR_APT_ROW_BG = Color3.fromRGB(35, 22, 50)
-local CLR_WANTED_TEXT = Color3.fromRGB(255, 100, 100)
-local CLR_APT_WANTED_TEXT = Color3.fromRGB(255, 120, 120)
-local CLR_APT_SEARCH_TEXT = Color3.fromRGB(180, 160, 255)
-local CLR_STATUS_GOLD = Color3.fromRGB(255, 215, 0)
-local CLR_STATUS_DIM = Color3.fromRGB(160, 175, 195)
-local CLR_LABEL_APT = Color3.fromRGB(180, 130, 255)
-local CLR_LABEL_NORMAL = Color3.fromRGB(130, 160, 200)
-local CLR_ESP_RED = Color3.fromRGB(255, 60, 60)
-local CLR_ESP_ORANGE = Color3.fromRGB(255, 170, 0)
-local CLR_ESP_PURPLE = Color3.fromRGB(180, 100, 255)
-local CLR_APT_BTN_ON = Color3.fromRGB(140, 60, 220)
-local CLR_APT_BTN_OFF = Color3.fromRGB(55, 35, 75)
-local CLR_APT_BTN_TEXT_ON = Color3.fromRGB(255, 240, 255)
-local CLR_APT_BTN_TEXT_OFF = Color3.fromRGB(180, 160, 200)
+-- =====================================================================
+-- PRE-CACHED CONSTANTS
+-- =====================================================================
+local CLR_SELECTED_BG       = Color3.fromRGB(45, 90, 150)
+local CLR_SELECTED_TEXT     = Color3.fromRGB(255, 230, 80)
+local CLR_ROW_BG            = Color3.fromRGB(18, 22, 32)
+local CLR_ROW_BG_ALT        = Color3.fromRGB(22, 28, 40)
+local CLR_APT_ROW_BG        = Color3.fromRGB(38, 22, 58)
+local CLR_BOAT_ROW_BG       = Color3.fromRGB(12, 38, 58)
+local CLR_WANTED_TEXT       = Color3.fromRGB(255, 80, 80)
+local CLR_APT_WANTED_TEXT   = Color3.fromRGB(255, 100, 100)
+local CLR_BOAT_WANTED_TEXT  = Color3.fromRGB(80, 200, 255)
+local CLR_APT_SEARCH_TEXT   = Color3.fromRGB(180, 150, 255)
+local CLR_BOAT_SEARCH_TEXT  = Color3.fromRGB(80, 210, 255)
+local CLR_STATUS_GOLD       = Color3.fromRGB(255, 210, 0)
+local CLR_STATUS_DIM        = Color3.fromRGB(140, 160, 185)
+local CLR_LABEL_NORMAL      = Color3.fromRGB(110, 145, 190)
+local CLR_LABEL_APT         = Color3.fromRGB(170, 110, 255)
+local CLR_LABEL_BOAT        = Color3.fromRGB(60, 185, 255)
+local CLR_ESP_RED           = Color3.fromRGB(255, 55, 55)
+local CLR_ESP_ORANGE        = Color3.fromRGB(255, 160, 0)
+local CLR_ESP_PURPLE        = Color3.fromRGB(170, 90, 255)
+local CLR_ESP_CYAN          = Color3.fromRGB(0, 210, 255)
+local CLR_ESP_WHITE         = Color3.fromRGB(220, 220, 220)
 
--- Safe Mouse Location Helper (optimized - cache method availability)
+-- Button palette
+local CLR_APT_BTN_ON        = Color3.fromRGB(130, 50, 220)
+local CLR_APT_BTN_OFF       = Color3.fromRGB(48, 30, 70)
+local CLR_APT_BTN_TEXT_ON   = Color3.fromRGB(255, 235, 255)
+local CLR_APT_BTN_TEXT_OFF  = Color3.fromRGB(165, 140, 195)
+local CLR_BOAT_BTN_ON       = Color3.fromRGB(0, 140, 200)
+local CLR_BOAT_BTN_OFF      = Color3.fromRGB(18, 42, 68)
+local CLR_BOAT_BTN_TEXT_ON  = Color3.fromRGB(200, 245, 255)
+local CLR_BOAT_BTN_TEXT_OFF = Color3.fromRGB(100, 170, 200)
+
+-- =====================================================================
+-- SAFE HELPERS
+-- =====================================================================
 local _hasGetMouseLocation = pcall(function() UserInputService:GetMouseLocation() end)
 local function getMousePos()
     if _hasGetMouseLocation then
         return UserInputService:GetMouseLocation()
     end
-    if mouse then
-        return Vector2.new(mouse.X, mouse.Y)
-    end
+    if mouse then return Vector2.new(mouse.X, mouse.Y) end
     return Vector2.zero
 end
 
--- Safe Mouse Click State Helper (optimized - cache method availability)
 local _hasIsmouse1pressed = type(ismouse1pressed) == "function"
 local function isLeftMouseDown()
     if _hasIsmouse1pressed then
-        local ok, pressed = pcall(ismouse1pressed)
-        if ok then return pressed end
+        local ok, v = pcall(ismouse1pressed)
+        if ok then return v end
     end
-    local ok, pressed = pcall(function()
+    local ok, v = pcall(function()
         return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
     end)
-    if ok then return pressed end
+    if ok then return v end
     return false
 end
 
--- Safe WorldToScreen fallback
 local WorldToScreen = WorldToScreen or function(pos)
     local cam = workspace.CurrentCamera
     if cam then
-        local screenPos, onScreen = cam:WorldToViewportPoint(pos)
-        return Vector2.new(screenPos.X, screenPos.Y), onScreen
+        local sp, on = cam:WorldToViewportPoint(pos)
+        return Vector2.new(sp.X, sp.Y), on
     end
     return Vector2.zero, false
 end
 
--- Font Helper
 local DEFAULT_FONT = (Drawing.Font and Drawing.Font.Plex) or 2
 
-local function formatText(textObj, str, size, color, center, font)
-    textObj.Text = str or ""
-    textObj.Size = size or 12
-    textObj.Color = color or Color3.fromRGB(255, 255, 255)
-    textObj.Center = center or false
-    textObj.Outline = true
-    pcall(function() textObj.Font = font or DEFAULT_FONT end)
+local function fmt(d, str, sz, clr, ctr, fnt)
+    d.Text    = str or ""
+    d.Size    = sz or 12
+    d.Color   = clr or Color3.fromRGB(255, 255, 255)
+    d.Center  = ctr or false
+    d.Outline = true
+    pcall(function() d.Font = fnt or DEFAULT_FONT end)
 end
 
--- Safe Notification Helper
-local function notify(title, text, duration)
+local function notify(title, text, dur)
     pcall(function()
         game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = title,
-            Text = text,
-            Duration = duration or 3
+            Title = title, Text = text, Duration = dur or 3
         })
     end)
 end
 
--- Configuration & State
-local POOL_SIZE = 32 -- Max 30 players per server, 32 is enough
-local MAX_ROWS = 10
-local BORDER_US_X_LIMIT = 2500
-local running = true
+-- =====================================================================
+-- BOAT DETECTION (CollectionService tag "Boat" from BoatUtil)
+-- =====================================================================
+local BOAT_TAG = "Boat"
+
+local function isInBoat(char)
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or not hum.Sit then return false end
+    local seat = hum.SeatPart
+    if not seat then return false end
+    local p = seat.Parent
+    while p do
+        if CollectionService:HasTag(p, BOAT_TAG) then return true end
+        p = p.Parent
+    end
+    return false
+end
+
+-- =====================================================================
+-- CONFIG & STATE
+-- =====================================================================
+local POOL_SIZE  = 32
+local MAX_ROWS   = 11
+local BORDER_X   = 2500
+local running    = true
 local scrollOffset = 0
 
-local windowPos = Vector2.new(80, 140)
-local lastWindowPos = Vector2.new(0, 0) -- Track for dirty-check
-local windowSize = Vector2.new(350, 444)
-local isDragging = false
-local dragOffset = Vector2.new(0, 0)
+local windowPos      = Vector2.new(80, 130)
+local lastWindowPos  = Vector2.new(-1, -1)
+local windowSize     = Vector2.new(370, 494)
+local isDragging     = false
+local dragOffset     = Vector2.zero
 local lastClickState = false
 local selectedPlayer = nil
 
-local cachedTargets = {}
-local cachedSuspectPlayers = {} -- Now stores pre-computed row data
-local cachedSuspectRefs = {} -- Raw player refs for getNearestUsSuspect
-
--- APARTMENT LOOK STATE
 local apartmentLookEnabled = false
-local cachedApartmentOwnerIds = {}
+local boatSmugglingEnabled = false
 
--- Pre-allocate 3D ESP Drawing Pool (reduced to 32)
+local cachedTargets        = {}
+local cachedSuspectPlayers = {}
+local cachedSuspectRefs    = {}
+local cachedAptOwners      = {}
+
+-- =====================================================================
+-- TEAM FILTERS
+-- =====================================================================
+-- STRICT allowlist: ONLY players explicitly on a Civilian team are opponents.
+-- No team / unknown team = NOT a civilian (treated as non-threat, excluded from list).
+local function isCivilian(plr)
+    local team = plr.Team
+    if not team then return false end
+    local n = team.Name:lower()
+    return n == "civilian" or n == "civilians"
+        or n:find("civilian") ~= nil
+end
+
+-- Blocklist: every law-enforcement / government / allied team.
+-- Coast Guard, US Army, FBI, BORTAC, Border Patrol, Police, SWAT are all teammates.
+local function isLawEnforcement(plr)
+    local team = plr.Team
+    if not team then return false end
+    local n = team.Name:lower()
+    return n:find("police")       ~= nil
+        or n:find("bortac")       ~= nil
+        or n:find("patrol")       ~= nil  -- Border Patrol, USBP
+        or n:find("border")       ~= nil
+        or n:find("fbi")          ~= nil
+        or n:find("swat")         ~= nil
+        or n:find("sheriff")      ~= nil
+        or n:find("coast guard")  ~= nil
+        or n:find("coastguard")   ~= nil
+        or n:find("coast")        ~= nil
+        or n:find("guard")        ~= nil
+        or n:find("army")         ~= nil
+        or n:find("military")     ~= nil
+        or n:find("national")     ~= nil  -- National Guard
+        or n:find("us army")      ~= nil
+        or n:find("srt")          ~= nil
+        or n:find("fire")         ~= nil
+        or n:find("ems")          ~= nil
+        or n:find("paramedic")    ~= nil
+        or n:find("dot")          ~= nil
+        or n:find("federal")      ~= nil
+        or n:find("ranger")       ~= nil
+        or n:find("marshal")      ~= nil
+end
+
+-- =====================================================================
+-- NEAREST SUSPECT (from cached refs)
+-- =====================================================================
+local function getNearestUsSuspect()
+    local myChar = lp.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return nil, math.huge end
+    local myPos = myRoot.Position
+    local nearest, shortest = nil, math.huge
+    for _, plr in ipairs(cachedSuspectRefs) do
+        local char = plr.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if root then
+            local d = (root.Position - myPos).Magnitude
+            if d < shortest then shortest = d; nearest = plr end
+        end
+    end
+    return nearest, shortest
+end
+
+-- =====================================================================
+-- ESP DRAWING POOL
+-- =====================================================================
 local pool = {}
 for i = 1, POOL_SIZE do
     local box = Drawing.new("Square")
@@ -122,7 +219,7 @@ for i = 1, POOL_SIZE do
     box.Visible = false
 
     local tag = Drawing.new("Text")
-    tag.Size = 12
+    tag.Size = 11
     tag.Center = true
     tag.Outline = true
     tag.Visible = false
@@ -131,375 +228,395 @@ for i = 1, POOL_SIZE do
     pool[i] = { box = box, tag = tag }
 end
 
--- Custom Team Colors Mapping
-local TEAM_COLORS = {
-    ["police"] = Color3.fromRGB(0, 170, 255),
-    ["patrol"] = Color3.fromRGB(0, 170, 255),
-    ["border patrol"] = Color3.fromRGB(0, 170, 255),
-    ["usbp"] = Color3.fromRGB(0, 170, 255),
-    ["swat"] = Color3.fromRGB(0, 50, 180),
-    ["bortac"] = Color3.fromRGB(0, 50, 180),
-    ["srt"] = Color3.fromRGB(0, 50, 180),
-    ["sheriff"] = Color3.fromRGB(30, 144, 255),
-    ["fbi"] = Color3.fromRGB(20, 40, 110),
-    ["federal"] = Color3.fromRGB(20, 40, 110),
-    ["military"] = Color3.fromRGB(40, 130, 50),
-    ["national guard"] = Color3.fromRGB(40, 130, 50),
-    ["fire"] = Color3.fromRGB(255, 80, 80),
-    ["fire department"] = Color3.fromRGB(255, 80, 80),
-    ["ems"] = Color3.fromRGB(255, 180, 0),
-    ["paramedic"] = Color3.fromRGB(255, 180, 0),
-    ["dot"] = Color3.fromRGB(255, 140, 0),
-    ["mexico"] = Color3.fromRGB(40, 180, 80),
-    ["mexican citizen"] = Color3.fromRGB(40, 180, 80),
-    ["cartel"] = Color3.fromRGB(180, 30, 30),
-    ["civilian"] = Color3.fromRGB(220, 220, 220),
-}
-
-local CLR_DEFAULT_TEAM = Color3.fromRGB(200, 200, 200)
-
-local function getCustomTeamColor(team)
-    if not team then return CLR_DEFAULT_TEAM end
-    local name = team.Name:lower()
-    for key, color in pairs(TEAM_COLORS) do
-        if name:find(key) then
-            return color
-        end
-    end
-    if team.TeamColor then
-        return team.TeamColor.Color
-    end
-    return CLR_DEFAULT_TEAM
-end
-
-local function isLawEnforcement(plr)
-    local team = plr.Team
-    if not team then return false end
-    local name = team.Name:lower()
-    return name:find("police") or name:find("bortac") or name:find("patrol") or name:find("fbi") or name:find("swat") or name:find("sheriff")
-end
-
--- Helper: Lock onto Nearest US Suspect (uses cached refs)
-local function getNearestUsSuspect()
-    local myChar = lp.Character
-    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    if not myRoot then return nil, math.huge end
-    local myPos = myRoot.Position
-
-    local nearest = nil
-    local shortestDist = math.huge
-
-    for _, plr in ipairs(cachedSuspectRefs) do
-        local char = plr.Character
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        if root then
-            local dist = (root.Position - myPos).Magnitude
-            if dist < shortestDist then
-                shortestDist = dist
-                nearest = plr
-            end
-        end
-    end
-    return nearest, shortestDist
-end
-
--- ---------------------------------------------------------------------
--- POLISHED GUI PANELS
--- ---------------------------------------------------------------------
+-- =====================================================================
+-- GUI DRAWING OBJECTS
+-- =====================================================================
 local panelBg = Drawing.new("Square")
 panelBg.Size = windowSize
-panelBg.Color = Color3.fromRGB(15, 18, 24)
+panelBg.Color = Color3.fromRGB(10, 13, 20)
 panelBg.Filled = true
-panelBg.Transparency = 0.96
+panelBg.Transparency = 0.95
 panelBg.Visible = true
 
 local panelBorder = Drawing.new("Square")
 panelBorder.Size = windowSize
-panelBorder.Color = Color3.fromRGB(45, 55, 75)
+panelBorder.Color = Color3.fromRGB(40, 52, 72)
 panelBorder.Filled = false
 panelBorder.Thickness = 1.5
 panelBorder.Visible = true
 
+local panelInner = Drawing.new("Square")
+panelInner.Size = Vector2.new(windowSize.X - 4, windowSize.Y - 4)
+panelInner.Color = Color3.fromRGB(55, 75, 115)
+panelInner.Filled = false
+panelInner.Thickness = 0.5
+panelInner.Visible = true
+
 local panelHeader = Drawing.new("Square")
-panelHeader.Size = Vector2.new(windowSize.X, 32)
-panelHeader.Color = Color3.fromRGB(24, 29, 40)
+panelHeader.Size = Vector2.new(windowSize.X, 34)
+panelHeader.Color = Color3.fromRGB(20, 25, 38)
 panelHeader.Filled = true
 panelHeader.Visible = true
 
-local panelHeaderAccent = Drawing.new("Square")
-panelHeaderAccent.Size = Vector2.new(windowSize.X, 2)
-panelHeaderAccent.Color = Color3.fromRGB(255, 200, 50)
-panelHeaderAccent.Filled = true
-panelHeaderAccent.Visible = true
+local panelAccent = Drawing.new("Square")
+panelAccent.Size = Vector2.new(windowSize.X, 2)
+panelAccent.Color = Color3.fromRGB(255, 195, 40)
+panelAccent.Filled = true
+panelAccent.Visible = true
+
+local panelAccent2 = Drawing.new("Square")
+panelAccent2.Size = Vector2.new(windowSize.X * 0.4, 1)
+panelAccent2.Color = Color3.fromRGB(0, 200, 255)
+panelAccent2.Filled = true
+panelAccent2.Visible = true
 
 local panelTitle = Drawing.new("Text")
-formatText(panelTitle, "[+] US SUSPECT TARGET CONTROL", 13, Color3.fromRGB(255, 215, 0), false)
+fmt(panelTitle, "  [+] SDBR TACTICAL SUITE  v2.0", 13, Color3.fromRGB(255, 210, 0), false)
 
 local statusLabel = Drawing.new("Text")
-formatText(statusLabel, "Target: None", 11, Color3.fromRGB(180, 195, 215), false)
+fmt(statusLabel, "Target: None", 10, CLR_STATUS_DIM, false)
+
+local divLine1 = Drawing.new("Square")
+divLine1.Size = Vector2.new(windowSize.X - 16, 1)
+divLine1.Color = Color3.fromRGB(40, 55, 80)
+divLine1.Filled = true
+divLine1.Visible = true
 
 local listRangeLabel = Drawing.new("Text")
-formatText(listRangeLabel, "Suspects US (0-0 of 0)", 11, CLR_LABEL_NORMAL, false)
+fmt(listRangeLabel, "Civilians US (0-0 of 0)", 10, CLR_LABEL_NORMAL, false)
 
-local SCROLL_BTN_W = 54
-local SCROLL_BTN_H = 20
+local SCROLL_BTN_W = 48
+local SCROLL_BTN_H = 18
 
 local btnScrollUpBg = Drawing.new("Square")
 btnScrollUpBg.Size = Vector2.new(SCROLL_BTN_W, SCROLL_BTN_H)
-btnScrollUpBg.Color = Color3.fromRGB(45, 55, 72)
+btnScrollUpBg.Color = Color3.fromRGB(38, 50, 70)
 btnScrollUpBg.Filled = true
 btnScrollUpBg.Visible = true
 
 local btnScrollUpText = Drawing.new("Text")
-formatText(btnScrollUpText, "UP", 10, Color3.fromRGB(240, 245, 255), true)
+fmt(btnScrollUpText, "UP", 9, Color3.fromRGB(230, 240, 255), true)
 
 local btnScrollDnBg = Drawing.new("Square")
 btnScrollDnBg.Size = Vector2.new(SCROLL_BTN_W, SCROLL_BTN_H)
-btnScrollDnBg.Color = Color3.fromRGB(45, 55, 72)
+btnScrollDnBg.Color = Color3.fromRGB(38, 50, 70)
 btnScrollDnBg.Filled = true
 btnScrollDnBg.Visible = true
 
 local btnScrollDnText = Drawing.new("Text")
-formatText(btnScrollDnText, "DOWN", 10, Color3.fromRGB(240, 245, 255), true)
+fmt(btnScrollDnText, "DOWN", 9, Color3.fromRGB(230, 240, 255), true)
 
-local BTN_WIDTH = 106
-local BTN_HEIGHT = 26
+local BTN_W = 110
+local BTN_H = 26
 
-local btnCopyBg = Drawing.new("Square")
-btnCopyBg.Size = Vector2.new(BTN_WIDTH, BTN_HEIGHT)
-btnCopyBg.Color = Color3.fromRGB(35, 120, 200)
-btnCopyBg.Filled = true
-btnCopyBg.Visible = true
+local function makeBtnBg(r, g, b)
+    local d = Drawing.new("Square")
+    d.Size = Vector2.new(BTN_W, BTN_H)
+    d.Color = Color3.fromRGB(r, g, b)
+    d.Filled = true
+    d.Visible = true
+    return d
+end
 
-local btnCopyText = Drawing.new("Text")
-formatText(btnCopyText, "[COPY NAME]", 10, Color3.fromRGB(255, 255, 255), true)
+local btnCopyBg    = makeBtnBg(30, 110, 195)
+local btnCopyText  = Drawing.new("Text")
+fmt(btnCopyText, "[COPY NAME]", 10, Color3.fromRGB(255,255,255), true)
 
-local btnNearestBg = Drawing.new("Square")
-btnNearestBg.Size = Vector2.new(BTN_WIDTH, BTN_HEIGHT)
-btnNearestBg.Color = Color3.fromRGB(0, 150, 160)
-btnNearestBg.Filled = true
-btnNearestBg.Visible = true
-
+local btnNearestBg   = makeBtnBg(0, 140, 155)
 local btnNearestText = Drawing.new("Text")
-formatText(btnNearestText, "[NEAREST]", 10, Color3.fromRGB(255, 255, 255), true)
+fmt(btnNearestText, "[NEAREST]", 10, Color3.fromRGB(255,255,255), true)
 
-local btnUnstuckBg = Drawing.new("Square")
-btnUnstuckBg.Size = Vector2.new(BTN_WIDTH, BTN_HEIGHT)
-btnUnstuckBg.Color = Color3.fromRGB(210, 110, 20)
-btnUnstuckBg.Filled = true
-btnUnstuckBg.Visible = true
-
+local btnUnstuckBg   = makeBtnBg(200, 100, 15)
 local btnUnstuckText = Drawing.new("Text")
-formatText(btnUnstuckText, "[UNSTUCK]", 10, Color3.fromRGB(255, 255, 255), true)
+fmt(btnUnstuckText, "[UNSTUCK]", 10, Color3.fromRGB(255,255,255), true)
 
-local APT_BTN_WIDTH = windowSize.X - 16
-local APT_BTN_HEIGHT = 26
+local divLine2 = Drawing.new("Square")
+divLine2.Size = Vector2.new(windowSize.X - 16, 1)
+divLine2.Color = Color3.fromRGB(40, 55, 80)
+divLine2.Filled = true
+divLine2.Visible = true
 
-local btnAptLookBg = Drawing.new("Square")
-btnAptLookBg.Size = Vector2.new(APT_BTN_WIDTH, APT_BTN_HEIGHT)
-btnAptLookBg.Color = CLR_APT_BTN_OFF
-btnAptLookBg.Filled = true
-btnAptLookBg.Visible = true
+local FILTER_BTN_W = windowSize.X - 16
+local FILTER_BTN_H = 26
 
-local btnAptLookText = Drawing.new("Text")
-formatText(btnAptLookText, "[APT LOOK: OFF] - Show Apartment Owners", 10, CLR_APT_BTN_TEXT_OFF, true)
+local btnAptBg = Drawing.new("Square")
+btnAptBg.Size = Vector2.new(FILTER_BTN_W, FILTER_BTN_H)
+btnAptBg.Color = CLR_APT_BTN_OFF
+btnAptBg.Filled = true
+btnAptBg.Visible = true
 
--- Player Rows
+local btnAptText = Drawing.new("Text")
+fmt(btnAptText, "[APT LOOK: OFF]  Apartment Suspects", 10, CLR_APT_BTN_TEXT_OFF, true)
+
+local btnBoatBg = Drawing.new("Square")
+btnBoatBg.Size = Vector2.new(FILTER_BTN_W, FILTER_BTN_H)
+btnBoatBg.Color = CLR_BOAT_BTN_OFF
+btnBoatBg.Filled = true
+btnBoatBg.Visible = true
+
+local btnBoatText = Drawing.new("Text")
+fmt(btnBoatText, "[BOAT SMUG: OFF]  Boat Smugglers", 10, CLR_BOAT_BTN_TEXT_OFF, true)
+
+-- =====================================================================
+-- PLAYER ROWS
+-- =====================================================================
 local playerRows = {}
 for i = 1, MAX_ROWS do
     local rBg = Drawing.new("Square")
-    rBg.Size = Vector2.new(windowSize.X - 16, 24)
+    rBg.Size = Vector2.new(windowSize.X - 16, 23)
     rBg.Color = CLR_ROW_BG
     rBg.Filled = true
-    rBg.Visible = true
+    rBg.Visible = false
 
     local rText = Drawing.new("Text")
-    formatText(rText, "", 11, Color3.fromRGB(230, 235, 245), false)
+    fmt(rText, "", 10, Color3.fromRGB(220, 230, 245), false)
 
     playerRows[i] = { bg = rBg, text = rText, player = nil }
 end
 
-local function isInside(pos, size, point)
-    return point.X >= pos.X and point.X <= pos.X + size.X and point.Y >= pos.Y and point.Y <= pos.Y + size.Y
+local threatBars = {}
+for i = 1, MAX_ROWS do
+    local tb = Drawing.new("Square")
+    tb.Size = Vector2.new(3, 23)
+    tb.Filled = true
+    tb.Visible = false
+    threatBars[i] = tb
 end
 
--- Helper: reposition all panel elements (only called when panel moves)
+-- =====================================================================
+-- HELPERS
+-- =====================================================================
+local function isInside(pos, size, pt)
+    return pt.X >= pos.X and pt.X <= pos.X + size.X
+        and pt.Y >= pos.Y and pt.Y <= pos.Y + size.Y
+end
+
 local function repositionPanel()
-    panelBg.Position = windowPos
+    local x, y = windowPos.X, windowPos.Y
+    local W, H = windowSize.X, windowSize.Y
+
+    panelBg.Position     = windowPos
     panelBorder.Position = windowPos
+    panelInner.Position  = Vector2.new(x + 2, y + 2)
     panelHeader.Position = windowPos
-    panelHeaderAccent.Position = windowPos
-    panelTitle.Position = Vector2.new(windowPos.X + 12, windowPos.Y + 8)
-    statusLabel.Position = Vector2.new(windowPos.X + 12, windowPos.Y + 38)
+    panelAccent.Position = Vector2.new(x, y + 34)
+    panelAccent2.Position= Vector2.new(x, y + 36)
 
-    local subHeaderY = windowPos.Y + 56
-    listRangeLabel.Position = Vector2.new(windowPos.X + 12, subHeaderY + 2)
+    panelTitle.Position  = Vector2.new(x + 10, y + 9)
+    statusLabel.Position = Vector2.new(x + 10, y + 42)
+    divLine1.Position    = Vector2.new(x + 8, y + 60)
 
-    btnScrollUpBg.Position = Vector2.new(windowPos.X + 224, subHeaderY)
-    btnScrollUpText.Position = Vector2.new(windowPos.X + 251, subHeaderY + 4)
-    btnScrollDnBg.Position = Vector2.new(windowPos.X + 284, subHeaderY)
-    btnScrollDnText.Position = Vector2.new(windowPos.X + 311, subHeaderY + 4)
+    local subY = y + 63
+    listRangeLabel.Position  = Vector2.new(x + 10, subY + 2)
+    btnScrollUpBg.Position   = Vector2.new(x + W - SCROLL_BTN_W * 2 - 12, subY)
+    btnScrollUpText.Position = Vector2.new(x + W - SCROLL_BTN_W * 2 - 12 + SCROLL_BTN_W * 0.5, subY + 4)
+    btnScrollDnBg.Position   = Vector2.new(x + W - SCROLL_BTN_W - 8, subY)
+    btnScrollDnText.Position = Vector2.new(x + W - SCROLL_BTN_W - 8 + SCROLL_BTN_W * 0.5, subY + 4)
 
-    local btnRow1Y = windowPos.Y + windowSize.Y - 66
-    btnCopyBg.Position = Vector2.new(windowPos.X + 8, btnRow1Y)
-    btnCopyText.Position = Vector2.new(windowPos.X + 61, btnRow1Y + 7)
-    btnNearestBg.Position = Vector2.new(windowPos.X + 122, btnRow1Y)
-    btnNearestText.Position = Vector2.new(windowPos.X + 175, btnRow1Y + 7)
-    btnUnstuckBg.Position = Vector2.new(windowPos.X + 236, btnRow1Y)
-    btnUnstuckText.Position = Vector2.new(windowPos.X + 289, btnRow1Y + 7)
+    -- rows (dynamic in render loop, but anchor positions set here for initial layout)
+    local rowStartY = subY + 20
+    for i = 1, MAX_ROWS do
+        local rowY = rowStartY + (i - 1) * 24
+        playerRows[i].bg.Position   = Vector2.new(x + 8, rowY)
+        playerRows[i].text.Position = Vector2.new(x + 18, rowY + 5)
+        threatBars[i].Position      = Vector2.new(x + 8, rowY)
+    end
 
-    local btnRow2Y = windowPos.Y + windowSize.Y - 34
-    btnAptLookBg.Position = Vector2.new(windowPos.X + 8, btnRow2Y)
-    btnAptLookText.Position = Vector2.new(windowPos.X + 8 + APT_BTN_WIDTH * 0.5, btnRow2Y + 7)
+    -- action buttons (3-up row)
+    local btnRowY = y + H - 106
+    local spacing = math.floor((W - 16 - BTN_W * 3) / 2)
+    btnCopyBg.Position     = Vector2.new(x + 8, btnRowY)
+    btnCopyText.Position   = Vector2.new(x + 8 + BTN_W * 0.5, btnRowY + 7)
+    btnNearestBg.Position  = Vector2.new(x + 8 + BTN_W + spacing, btnRowY)
+    btnNearestText.Position= Vector2.new(x + 8 + BTN_W + spacing + BTN_W * 0.5, btnRowY + 7)
+    btnUnstuckBg.Position  = Vector2.new(x + 8 + (BTN_W + spacing) * 2, btnRowY)
+    btnUnstuckText.Position= Vector2.new(x + 8 + (BTN_W + spacing) * 2 + BTN_W * 0.5, btnRowY + 7)
+
+    divLine2.Position = Vector2.new(x + 8, y + H - 70)
+
+    local fBtn1Y = y + H - 64
+    btnAptBg.Position   = Vector2.new(x + 8, fBtn1Y)
+    btnAptText.Position = Vector2.new(x + 8 + FILTER_BTN_W * 0.5, fBtn1Y + 7)
+
+    local fBtn2Y = y + H - 34
+    btnBoatBg.Position   = Vector2.new(x + 8, fBtn2Y)
+    btnBoatText.Position = Vector2.new(x + 8 + FILTER_BTN_W * 0.5, fBtn2Y + 7)
 end
 
--- Initial positioning
 repositionPanel()
 
--- ---------------------------------------------------------------------
--- BACKGROUND COLLECTOR (3 Hz) - Single pass, pre-caches all row data
--- ---------------------------------------------------------------------
+-- =====================================================================
+-- BACKGROUND COLLECTOR (3 Hz) -- CIVILIANS ONLY
+-- =====================================================================
 task.spawn(function()
     while running do
-        local espList = {}
-        local suspectData = {} -- Pre-computed row data: {plr, wantedLevel, stars, tName, teamColor, ownsApt, rootRef}
-        local suspectRefs = {} -- Raw player refs for nearest-suspect
-        local aptOwnerIdSet = {}
+        local espList     = {}
+        local suspectData = {}
+        local suspectRefs = {}
+        local aptOwnerIds = {}
 
         local myChar = lp.Character
         local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-        local myPos = myRoot and myRoot.Position or Vector3.zero
+        local myPos  = myRoot and myRoot.Position or Vector3.zero
 
-        -- SINGLE PASS: build apt set + suspects + ESP in one loop
         local playerList = Players:GetPlayers()
 
-        -- First quick pass: build apartment owner set (needed before main pass)
+        -- Pass 1: apartment owner set
         for i = 1, #playerList do
             local plr = playerList[i]
             if plr ~= lp then
-                local ownedAptId = plr:GetAttribute("OwnedApartmentId")
-                if ownedAptId then
-                    aptOwnerIdSet[plr.UserId] = true
-                end
+                local aid = plr:GetAttribute("OwnedApartmentId")
+                if aid then aptOwnerIds[plr.UserId] = true end
             end
         end
 
-        -- Main pass: suspects + ESP
-        local aptLook = apartmentLookEnabled -- Cache toggle state for this tick
+        local aptLook  = apartmentLookEnabled
+        local boatLook = boatSmugglingEnabled
+
+        -- Pass 2: main scan
         for i = 1, #playerList do
             local plr = playerList[i]
-            if plr ~= lp then
-                local isCop = isLawEnforcement(plr)
-                local wantedLevel = plr:GetAttribute("WantedLevel") or 0
-                local stars = math.clamp(math.ceil(wantedLevel / 200), 0, 5)
-                local fromMexico = plr:GetAttribute("FromMexico") == true
-                local legallyCrossed = plr:GetAttribute("LegallyCrossedBorder") == true
-                local granted = plr:GetAttribute("Granted") == true
-                local isIllegalCrosser = fromMexico and not legallyCrossed and not granted
-                local ownsApartment = aptOwnerIdSet[plr.UserId] == true
+            if plr == lp then continue end
 
-                local char = plr.Character
-                local rootPart = char and char:FindFirstChild("HumanoidRootPart")
-                local isInsideUS = rootPart and (rootPart.Position.X < BORDER_US_X_LIMIT) or false
+            local isCiv = isCivilian(plr)
+            local isCop = isLawEnforcement(plr)
 
-                local tName = plr.Team and plr.Team.Name or "Civilian"
-                local teamColor = getCustomTeamColor(plr.Team)
+            local wantedLevel  = plr:GetAttribute("WantedLevel") or 0
+            local stars        = math.clamp(math.ceil(wantedLevel / 200), 0, 5)
+            local fromMexico   = plr:GetAttribute("FromMexico") == true
+            local legallyCrossed = plr:GetAttribute("LegallyCrossedBorder") == true
+            local granted      = plr:GetAttribute("Granted") == true
+            local isIllegal    = fromMexico and not legallyCrossed and not granted
+            local ownsApt      = aptOwnerIds[plr.UserId] == true
 
-                -- Suspect list filter
-                if not isCop and isInsideUS then
-                    if aptLook then
-                        if ownsApartment and (wantedLevel > 0 or isIllegalCrosser) then
-                            suspectData[#suspectData + 1] = {
-                                plr = plr,
-                                wantedLevel = wantedLevel,
-                                stars = stars,
-                                tName = tName,
-                                teamColor = teamColor,
-                                ownsApt = true,
-                                rootRef = rootPart
-                            }
-                            suspectRefs[#suspectRefs + 1] = plr
-                        end
-                    else
-                        if wantedLevel > 0 or isIllegalCrosser then
-                            suspectData[#suspectData + 1] = {
-                                plr = plr,
-                                wantedLevel = wantedLevel,
-                                stars = stars,
-                                tName = tName,
-                                teamColor = teamColor,
-                                ownsApt = ownsApartment,
-                                rootRef = rootPart
-                            }
-                            suspectRefs[#suspectRefs + 1] = plr
-                        end
-                    end
+            local char     = plr.Character
+            local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+            local isInUS   = rootPart and (rootPart.Position.X < BORDER_X) or false
+
+            -- Boat smuggler = civilian, in US, seated in a Boat model, AND flagged
+            local inBoatNow      = isInUS and isInBoat(char)
+            local isBoatSmuggler = inBoatNow and isCiv and (isIllegal or wantedLevel > 0)
+
+            local tName = plr.Team and plr.Team.Name or "Civilian"
+
+            -- ── CIVILIAN-ONLY LIST ──
+            if isCiv and not isCop and isInUS then
+                local include = false
+                if boatLook then
+                    include = isBoatSmuggler
+                elseif aptLook then
+                    include = ownsApt and (wantedLevel > 0 or isIllegal)
+                else
+                    include = wantedLevel > 0 or isIllegal
                 end
 
-                -- ESP filter
+                if include then
+                    suspectData[#suspectData + 1] = {
+                        plr         = plr,
+                        wantedLevel = wantedLevel,
+                        stars       = stars,
+                        tName       = tName,
+                        ownsApt     = ownsApt,
+                        isIllegal   = isIllegal,
+                        isBoat      = isBoatSmuggler,
+                        rootRef     = rootPart,
+                    }
+                    suspectRefs[#suspectRefs + 1] = plr
+                end
+            end
+
+            -- ── ESP (all players in scope, not just civilians) ──
+            if char then
                 local showESP = false
-                if char then
-                    if aptLook then
-                        showESP = ownsApartment and not isCop and (wantedLevel > 0 or isIllegalCrosser)
-                    else
-                        showESP = isInsideUS
-                    end
+                if boatLook then
+                    showESP = isBoatSmuggler
+                elseif aptLook then
+                    showESP = isCiv and ownsApt and not isCop and (wantedLevel > 0 or isIllegal)
+                else
+                    showESP = isInUS
                 end
 
                 if showESP then
                     local head = char:FindFirstChild("Head")
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-
+                    local hum  = char:FindFirstChildOfClass("Humanoid")
                     if head and rootPart and hum and hum.Health > 0 then
-                        local dist = math.floor((rootPart.Position - myPos).Magnitude)
+                        local dist   = math.floor((rootPart.Position - myPos).Magnitude)
+                        local aptTag = ownsApt and " [APT]" or ""
                         local tagText, tagColor
-                        local aptTag = ownsApartment and " [APT]" or ""
-                        local isDecayedCrosser = isIllegalCrosser and (wantedLevel == 0) and (tName == "Civilian")
 
-                        if wantedLevel > 0 then
+                        if not isCiv then
+                            -- Teammate (cop, coast guard, army, etc.) - plain label only
+                            tagColor = Color3.fromRGB(80, 160, 255)
+                            tagText  = ("[%s] %s (%dm)"):format(tName:upper(), plr.Name, dist)
+                        elseif isBoatSmuggler then
+                            tagColor = CLR_ESP_CYAN
+                            if wantedLevel > 0 then
+                                tagText = ("[BOAT-SMUG] [*%d] %s (%d pts) (%dm)%s"):format(stars, plr.Name, wantedLevel, dist, aptTag)
+                            else
+                                tagText = ("[BOAT-SMUG] %s (%dm) - Check Tablet%s"):format(plr.Name, dist, aptTag)
+                            end
+                        elseif wantedLevel > 0 then
                             tagColor = CLR_ESP_RED
-                            tagText = string.format("[%s] [*%d] %s (%d pts) - %dm%s", tName:upper(), stars, plr.Name, wantedLevel, dist, aptTag)
-                        elseif isDecayedCrosser and isInsideUS then
+                            tagText  = ("[CIV] [*%d] %s (%d pts) (%dm)%s"):format(stars, plr.Name, wantedLevel, dist, aptTag)
+                        elseif isIllegal and isInUS then
                             tagColor = CLR_ESP_ORANGE
-                            tagText = string.format("[%s] [SEARCH TABLET] %s (%dm)%s", tName:upper(), plr.Name, dist, aptTag)
-                        elseif ownsApartment and aptLook then
+                            tagText  = ("[CIV] [SEARCH TABLET] %s (%dm)%s"):format(plr.Name, dist, aptTag)
+                        elseif ownsApt and aptLook then
                             tagColor = CLR_ESP_PURPLE
-                            tagText = string.format("[%s] [APT] [SEARCH TABLET] %s (%dm)", tName:upper(), plr.Name, dist)
+                            tagText  = ("[CIV] [APT] [SEARCH TABLET] %s (%dm)"):format(plr.Name, dist)
                         else
-                            tagColor = teamColor
-                            tagText = string.format("[%s] %s (%dm)%s", tName:upper(), plr.Name, dist, aptTag)
+                            tagColor = CLR_ESP_WHITE
+                            tagText  = ("[CIV] %s (%dm)%s"):format(plr.Name, dist, aptTag)
                         end
 
-                        espList[#espList + 1] = { head = head, root = rootPart, tagText = tagText, color = tagColor }
+
+                        espList[#espList + 1] = {
+                            head    = head,
+                            root    = rootPart,
+                            tagText = tagText,
+                            color   = tagColor,
+                        }
                     end
                 end
             end
         end
 
-        cachedTargets = espList
+        -- Sort: wanted desc then distance asc
+        if myRoot then
+            table.sort(suspectData, function(a, b)
+                if a.wantedLevel ~= b.wantedLevel then
+                    return a.wantedLevel > b.wantedLevel
+                end
+                local da = a.rootRef and (a.rootRef.Position - myPos).Magnitude or math.huge
+                local db = b.rootRef and (b.rootRef.Position - myPos).Magnitude or math.huge
+                return da < db
+            end)
+        end
+
+        cachedTargets        = espList
         cachedSuspectPlayers = suspectData
-        cachedSuspectRefs = suspectRefs
-        cachedApartmentOwnerIds = aptOwnerIdSet
+        cachedSuspectRefs    = suspectRefs
+        cachedAptOwners      = aptOwnerIds
         task.wait(0.33)
     end
 end)
 
--- ---------------------------------------------------------------------
--- RENDER & INTERACTION LOOP (Optimized: cached data, dirty panel pos)
--- ---------------------------------------------------------------------
+-- =====================================================================
+-- RENDER & INTERACTION LOOP
+-- =====================================================================
 RunService.RenderStepped:Connect(function()
     if not running then return end
 
-    local mPos = getMousePos()
+    local mPos       = getMousePos()
     local isMouseDown = isLeftMouseDown()
 
-    local suspectData = cachedSuspectPlayers
+    local suspectData   = cachedSuspectPlayers
     local totalSuspects = #suspectData
-    local maxOffset = math.max(0, totalSuspects - MAX_ROWS)
+    local maxOffset     = math.max(0, totalSuspects - MAX_ROWS)
 
-    -- Mouse Click & Drag Logic
+    -- CLICK HANDLING
     if isMouseDown and not lastClickState then
-        if isInside(windowPos, Vector2.new(windowSize.X, 32), mPos) then
+        if isInside(windowPos, Vector2.new(windowSize.X, 34), mPos) then
             isDragging = true
             dragOffset = Vector2.new(mPos.X - windowPos.X, mPos.Y - windowPos.Y)
         else
@@ -516,9 +633,9 @@ RunService.RenderStepped:Connect(function()
                     selectedPlayer = row.player
                     if setclipboard then
                         setclipboard(row.player.Name)
-                        notify("Target Selected", "Selected & Copied '" .. row.player.Name .. "' for Tablet!", 2)
+                        notify("Target Locked", "Selected & Copied '" .. row.player.Name .. "'  Paste in Tablet!", 2)
                     else
-                        notify("Target Selected", "Selected: " .. row.player.Name, 2)
+                        notify("Target Locked", "Selected: " .. row.player.Name, 2)
                     end
                     break
                 end
@@ -528,10 +645,10 @@ RunService.RenderStepped:Connect(function()
                 if selectedPlayer then
                     if setclipboard then
                         setclipboard(selectedPlayer.Name)
-                        notify("Tablet Helper", "Copied '" .. selectedPlayer.Name .. "'! Press Ctrl+V in Tablet.", 3)
+                        notify("Tablet Helper", "Copied '" .. selectedPlayer.Name .. "'  Ctrl+V in Tablet", 3)
                     end
                 else
-                    notify("Warning", "Click a suspect from the list first!", 2)
+                    notify("Warning", "Select a suspect row first!", 2)
                 end
             end
 
@@ -540,30 +657,34 @@ RunService.RenderStepped:Connect(function()
                 if nearPlr then
                     selectedPlayer = nearPlr
                     if setclipboard then setclipboard(nearPlr.Name) end
-                    notify("Nearest Target", "Selected & Copied '" .. nearPlr.Name .. "' (" .. math.floor(nearDist) .. "m)!", 3)
+                    notify("Nearest Target", "Selected '" .. nearPlr.Name .. "' (" .. math.floor(nearDist) .. "m)", 3)
                 else
-                    notify("Nearest Target", "No suspects found on US side!", 2)
+                    notify("Nearest Target", "No suspects on US side!", 2)
                 end
             end
 
             if isInside(btnUnstuckBg.Position, btnUnstuckBg.Size, mPos) then
                 task.spawn(function()
-                    local remotes = ReplicatedStorage:FindFirstChild("__remotes")
-                    if remotes and remotes:FindFirstChild("VehicleService") and remotes.VehicleService:FindFirstChild("UnstuckVehicle") then
-                        remotes.VehicleService.UnstuckVehicle:FireServer()
-                        notify("Vehicle", "Vehicle Unstuck Request Sent!", 2)
+                    local rem = ReplicatedStorage:FindFirstChild("__remotes")
+                    if rem and rem:FindFirstChild("VehicleService") and rem.VehicleService:FindFirstChild("UnstuckVehicle") then
+                        rem.VehicleService.UnstuckVehicle:FireServer()
+                        notify("Vehicle", "Unstuck request sent!", 2)
                     end
                 end)
             end
 
-            if isInside(btnAptLookBg.Position, btnAptLookBg.Size, mPos) then
+            if isInside(btnAptBg.Position, btnAptBg.Size, mPos) then
+                if boatSmugglingEnabled then boatSmugglingEnabled = false end
                 apartmentLookEnabled = not apartmentLookEnabled
                 scrollOffset = 0
-                if apartmentLookEnabled then
-                    notify("Apartment Look", "ENABLED - Showing apartment suspects on US side", 3)
-                else
-                    notify("Apartment Look", "DISABLED - Normal suspect view", 3)
-                end
+                notify("Apt Look", apartmentLookEnabled and "ENABLED - Apartment suspects" or "DISABLED", 3)
+            end
+
+            if isInside(btnBoatBg.Position, btnBoatBg.Size, mPos) then
+                if apartmentLookEnabled then apartmentLookEnabled = false end
+                boatSmugglingEnabled = not boatSmugglingEnabled
+                scrollOffset = 0
+                notify("Boat Smuggling", boatSmugglingEnabled and "ENABLED - Tracking boat smugglers!" or "DISABLED", 3)
             end
         end
     elseif not isMouseDown then
@@ -576,161 +697,210 @@ RunService.RenderStepped:Connect(function()
 
     lastClickState = isMouseDown
 
-    -- Only reposition panel elements when panel has moved (saves ~25 Drawing writes/frame)
     if windowPos.X ~= lastWindowPos.X or windowPos.Y ~= lastWindowPos.Y then
         repositionPanel()
         lastWindowPos = windowPos
     end
 
-    -- Status label (only needs selectedPlayer distance - one cheap read)
-    if selectedPlayer and selectedPlayer.Character and selectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local myChar = lp.Character
-        local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-        local dist = 0
-        if myRoot then
-            dist = math.floor((selectedPlayer.Character.HumanoidRootPart.Position - myRoot.Position).Magnitude)
+    -- STATUS LABEL
+    if selectedPlayer then
+        local char  = selectedPlayer.Character
+        local root  = char and char:FindFirstChild("HumanoidRootPart")
+        local myC   = lp.Character
+        local myR   = myC and myC:FindFirstChild("HumanoidRootPart")
+        if root and myR then
+            local d = math.floor((root.Position - myR.Position).Magnitude)
+            statusLabel.Text = ("Target: %s  |  %dm  |  Ctrl+V in Tablet"):format(selectedPlayer.Name, d)
+        else
+            statusLabel.Text = ("Target: %s  |  Ctrl+V in Tablet"):format(selectedPlayer.Name)
         end
-        statusLabel.Text = string.format("Target: %s (%dm) - Copied! Press Ctrl+V in Tablet", selectedPlayer.Name, dist)
-        statusLabel.Color = CLR_STATUS_GOLD
-    elseif selectedPlayer then
-        statusLabel.Text = "Target: " .. selectedPlayer.Name .. " - Copied! Press Ctrl+V in Tablet"
         statusLabel.Color = CLR_STATUS_GOLD
     else
-        statusLabel.Text = "Target: None (Click suspect row below to select & copy)"
+        statusLabel.Text  = "Target: None  --  Click a suspect row to select & copy"
         statusLabel.Color = CLR_STATUS_DIM
     end
 
+    -- RANGE LABEL
     scrollOffset = math.clamp(scrollOffset, 0, maxOffset)
     local startRange = (totalSuspects > 0) and (scrollOffset + 1) or 0
-    local endRange = math.min(scrollOffset + MAX_ROWS, totalSuspects)
+    local endRange   = math.min(scrollOffset + MAX_ROWS, totalSuspects)
 
-    -- Update list range label
-    if apartmentLookEnabled then
-        listRangeLabel.Text = string.format("APT SUSPECTS US (%d-%d of %d)", startRange, endRange, totalSuspects)
+    if boatSmugglingEnabled then
+        listRangeLabel.Text  = ("BOAT SMUGGLERS US (%d-%d of %d)"):format(startRange, endRange, totalSuspects)
+        listRangeLabel.Color = CLR_LABEL_BOAT
+    elseif apartmentLookEnabled then
+        listRangeLabel.Text  = ("APT SUSPECTS US (%d-%d of %d)"):format(startRange, endRange, totalSuspects)
         listRangeLabel.Color = CLR_LABEL_APT
     else
-        listRangeLabel.Text = string.format("Suspects US (%d-%d of %d)", startRange, endRange, totalSuspects)
+        listRangeLabel.Text  = ("Civilians US (%d-%d of %d)"):format(startRange, endRange, totalSuspects)
         listRangeLabel.Color = CLR_LABEL_NORMAL
     end
 
-    -- Render Player Rows (uses pre-cached data - NO GetAttribute/FindFirstChild)
-    local startY = windowPos.Y + 82
-    local myChar = lp.Character
-    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    local myPos = myRoot and myRoot.Position or Vector3.zero
+    -- PLAYER ROWS
+    local rowStartY = windowPos.Y + 85
+    local myChar2 = lp.Character
+    local myRoot2 = myChar2 and myChar2:FindFirstChild("HumanoidRootPart")
+    local myPos2  = myRoot2 and myRoot2.Position or Vector3.zero
 
     for i = 1, MAX_ROWS do
-        local row = playerRows[i]
-        local idx = i + scrollOffset
+        local row  = playerRows[i]
+        local tb   = threatBars[i]
+        local idx  = i + scrollOffset
         local data = suspectData[idx]
 
         if data then
             local plr = data.plr
             row.player = plr
 
-            local rPos = Vector2.new(windowPos.X + 8, startY + ((i - 1) * 26))
-            row.bg.Position = rPos
-            row.text.Position = Vector2.new(rPos.X + 8, rPos.Y + 5)
+            local rPos = Vector2.new(windowPos.X + 8, rowStartY + (i - 1) * 24)
+            row.bg.Position   = rPos
+            row.text.Position = Vector2.new(rPos.X + 12, rPos.Y + 5)
+            tb.Position       = rPos
+            tb.Size           = Vector2.new(3, 23)
 
-            -- All data is pre-cached from collector - zero attribute lookups
             local wantedLevel = data.wantedLevel
-            local stars = data.stars
-            local tName = data.tName
-            local ownsApt = data.ownsApt
+            local stars       = data.stars
+            local ownsApt     = data.ownsApt
+            local isIllegal   = data.isIllegal
+            local isBoat      = data.isBoat
 
-            -- Only distance needs live update (cheap Position read)
             local dist = 0
-            local rootRef = data.rootRef
-            if rootRef and myRoot then
-                dist = math.floor((rootRef.Position - myPos).Magnitude)
+            if data.rootRef and myRoot2 then
+                dist = math.floor((data.rootRef.Position - myPos2).Magnitude)
             end
 
-            local aptIndicator = ownsApt and " [APT]" or ""
+            -- threat bar
+            if isBoat then
+                tb.Color = CLR_ESP_CYAN
+            elseif wantedLevel > 0 then
+                tb.Color = CLR_ESP_RED
+            elseif isIllegal then
+                tb.Color = CLR_ESP_ORANGE
+            elseif ownsApt then
+                tb.Color = CLR_ESP_PURPLE
+            else
+                tb.Color = CLR_ESP_WHITE
+            end
+            tb.Visible = true
+
+            local bgBase = (i % 2 == 0) and CLR_ROW_BG_ALT or CLR_ROW_BG
+            local aptMark  = ownsApt and " [APT]" or ""
+            local boatMark = isBoat and " [BOAT]" or ""
 
             if plr == selectedPlayer then
-                row.bg.Color = CLR_SELECTED_BG
+                row.bg.Color   = CLR_SELECTED_BG
                 row.text.Color = CLR_SELECTED_TEXT
-                if apartmentLookEnabled then
+                if boatSmugglingEnabled then
                     if wantedLevel > 0 then
-                        row.text.Text = string.format("> [%s] %s (%dm) [APT]  |  *%d (%d pts)", tName:upper(), plr.Name, dist, stars, wantedLevel)
+                        row.text.Text = ("> [CIV] %s (%dm) [BOAT]  |  *%d (%d pts)"):format(plr.Name, dist, stars, wantedLevel)
                     else
-                        row.text.Text = string.format("> [%s] %s (%dm) [APT]  |  SEARCH TABLET", tName:upper(), plr.Name, dist)
+                        row.text.Text = ("> [CIV] %s (%dm) [BOAT]  |  CHECK TABLET"):format(plr.Name, dist)
+                    end
+                elseif apartmentLookEnabled then
+                    if wantedLevel > 0 then
+                        row.text.Text = ("> [CIV] %s (%dm) [APT]  |  *%d (%d pts)"):format(plr.Name, dist, stars, wantedLevel)
+                    else
+                        row.text.Text = ("> [CIV] %s (%dm) [APT]  |  SEARCH TABLET"):format(plr.Name, dist)
                     end
                 else
-                    row.text.Text = string.format("> [%s] %s (%dm)%s  |  *%d (%d pts)", tName:upper(), plr.Name, dist, aptIndicator, stars, wantedLevel)
+                    row.text.Text = ("> [CIV] %s (%dm)%s%s  |  *%d (%d pts)"):format(plr.Name, dist, aptMark, boatMark, stars, wantedLevel)
                 end
             else
-                if ownsApt and apartmentLookEnabled then
+                if isBoat then
+                    row.bg.Color = CLR_BOAT_ROW_BG
+                elseif ownsApt and apartmentLookEnabled then
                     row.bg.Color = CLR_APT_ROW_BG
                 else
-                    row.bg.Color = CLR_ROW_BG
+                    row.bg.Color = bgBase
                 end
-                if apartmentLookEnabled then
+
+                if isBoat and wantedLevel > 0 then
+                    row.text.Color = CLR_BOAT_WANTED_TEXT
+                elseif isBoat then
+                    row.text.Color = CLR_BOAT_SEARCH_TEXT
+                elseif wantedLevel > 0 then
+                    row.text.Color = CLR_WANTED_TEXT
+                elseif ownsApt and apartmentLookEnabled then
+                    row.text.Color = isIllegal and CLR_APT_WANTED_TEXT or CLR_APT_SEARCH_TEXT
+                elseif isIllegal then
+                    row.text.Color = CLR_ESP_ORANGE
+                else
+                    row.text.Color = Color3.fromRGB(200, 215, 235)
+                end
+
+                if boatSmugglingEnabled then
                     if wantedLevel > 0 then
-                        row.text.Color = CLR_APT_WANTED_TEXT
-                        row.text.Text = string.format("  [%s] %s (%dm) [APT]  |  *%d (%d pts)", tName:upper(), plr.Name, dist, stars, wantedLevel)
+                        row.text.Text = ("  [CIV] %s (%dm) [BOAT]  |  *%d (%d pts)"):format(plr.Name, dist, stars, wantedLevel)
                     else
-                        row.text.Color = CLR_APT_SEARCH_TEXT
-                        row.text.Text = string.format("  [%s] %s (%dm) [APT]  |  SEARCH TABLET", tName:upper(), plr.Name, dist)
+                        row.text.Text = ("  [CIV] %s (%dm) [BOAT]  |  CHECK TABLET"):format(plr.Name, dist)
+                    end
+                elseif apartmentLookEnabled then
+                    if wantedLevel > 0 then
+                        row.text.Text = ("  [CIV] %s (%dm) [APT]  |  *%d (%d pts)"):format(plr.Name, dist, stars, wantedLevel)
+                    else
+                        row.text.Text = ("  [CIV] %s (%dm) [APT]  |  SEARCH TABLET"):format(plr.Name, dist)
                     end
                 else
-                    local teamColor = data.teamColor
-                    if wantedLevel > 0 then
-                        row.text.Color = CLR_WANTED_TEXT
-                    else
-                        row.text.Color = teamColor
-                    end
-                    row.text.Text = string.format("  [%s] %s (%dm)%s  |  *%d (%d pts)", tName:upper(), plr.Name, dist, aptIndicator, stars, wantedLevel)
+                    row.text.Text = ("  [CIV] %s (%dm)%s%s  |  *%d (%d pts)"):format(plr.Name, dist, aptMark, boatMark, stars, wantedLevel)
                 end
             end
 
-            row.bg.Visible = true
+            row.bg.Visible   = true
             row.text.Visible = true
         else
             row.player = nil
-            row.bg.Visible = false
+            row.bg.Visible   = false
             row.text.Visible = false
+            tb.Visible       = false
         end
     end
 
-    -- APT LOOK button appearance
+    -- FILTER BUTTON STATES
     if apartmentLookEnabled then
-        btnAptLookBg.Color = CLR_APT_BTN_ON
-        btnAptLookText.Text = "[APT LOOK: ON] - Filtering Apartment Suspects"
-        btnAptLookText.Color = CLR_APT_BTN_TEXT_ON
+        btnAptBg.Color   = CLR_APT_BTN_ON
+        btnAptText.Text  = "[APT LOOK: ON]  Apartment Suspects"
+        btnAptText.Color = CLR_APT_BTN_TEXT_ON
     else
-        btnAptLookBg.Color = CLR_APT_BTN_OFF
-        btnAptLookText.Text = "[APT LOOK: OFF] - Show Apartment Suspects"
-        btnAptLookText.Color = CLR_APT_BTN_TEXT_OFF
+        btnAptBg.Color   = CLR_APT_BTN_OFF
+        btnAptText.Text  = "[APT LOOK: OFF]  Apartment Suspects"
+        btnAptText.Color = CLR_APT_BTN_TEXT_OFF
     end
 
-    -- 3D ESP Rendering (only WorldToScreen + Drawing writes - no lookups)
-    local currentTargets = cachedTargets
+    if boatSmugglingEnabled then
+        btnBoatBg.Color   = CLR_BOAT_BTN_ON
+        btnBoatText.Text  = "[BOAT SMUG: ON]  Boat Smugglers Active"
+        btnBoatText.Color = CLR_BOAT_BTN_TEXT_ON
+    else
+        btnBoatBg.Color   = CLR_BOAT_BTN_OFF
+        btnBoatText.Text  = "[BOAT SMUG: OFF]  Boat Smugglers"
+        btnBoatText.Color = CLR_BOAT_BTN_TEXT_OFF
+    end
+
+    -- 3D ESP
+    local targets  = cachedTargets
     local rendered = 0
 
-    for i = 1, #currentTargets do
+    for i = 1, #targets do
         if rendered >= POOL_SIZE then break end
-        local t = currentTargets[i]
+        local t = targets[i]
 
         local top, v1 = WorldToScreen(t.head.Position + Vector3.new(0, 0.7, 0))
         local bot, v2 = WorldToScreen(t.root.Position - Vector3.new(0, 3.2, 0))
 
         if v1 and v2 then
             rendered = rendered + 1
-            local elem = pool[rendered]
-
+            local e = pool[rendered]
             local h = math.max(4, bot.Y - top.Y)
             local w = math.max(3, h * 0.5)
 
-            elem.box.Position = Vector2.new(top.X - w * 0.5, top.Y)
-            elem.box.Size = Vector2.new(w, h)
-            elem.box.Color = t.color
-
-            elem.tag.Text = t.tagText
-            elem.tag.Position = Vector2.new(top.X, top.Y - 14)
-
-            elem.box.Visible = true
-            elem.tag.Visible = true
+            e.box.Position = Vector2.new(top.X - w * 0.5, top.Y)
+            e.box.Size     = Vector2.new(w, h)
+            e.box.Color    = t.color
+            e.tag.Text     = t.tagText
+            e.tag.Color    = t.color
+            e.tag.Position = Vector2.new(top.X, top.Y - 15)
+            e.box.Visible  = true
+            e.tag.Visible  = true
         end
     end
 
@@ -740,4 +910,5 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-notify("Tactical Suite Loaded", "Performance optimized! All features active.", 4)
+notify("SDBR Suite v2.0 Loaded", "Civilians only | Boat Smug | Apt Look | All features active.", 5)
+-- To stop: running = false
