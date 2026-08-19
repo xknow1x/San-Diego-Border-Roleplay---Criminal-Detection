@@ -6,7 +6,6 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local CollectionService = game:GetService("CollectionService")
 local UserInputService = game:GetService("UserInputService")
 
 local lp = Players.LocalPlayer
@@ -101,21 +100,47 @@ local function notify(title, text, dur)
 end
 
 -- =====================================================================
--- BOAT DETECTION (CollectionService tag "Boat" from BoatUtil)
+-- BOAT DETECTION
+-- Proximity check against every boat in workspace.Boats.
+-- Civilians currently on/near a boat are flagged as active Boat Smugglers.
+-- Once they step off the boat, they are no longer displayed as Boat Smugglers.
 -- =====================================================================
-local BOAT_TAG = "Boat"
+local BOAT_PROX_SQ = 20 * 20  -- 20 studs squared (covers entire boat deck, seats, & perimeter)
 
-local function isInBoat(char)
-    if not char then return false end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum or not hum.Sit then return false end
-    local seat = hum.SeatPart
-    if not seat then return false end
-    local p = seat.Parent
-    while p do
-        if CollectionService:HasTag(p, BOAT_TAG) then return true end
-        p = p.Parent
+-- Pre-resolve the boats folder once; refresh lazily if it goes nil.
+local _boatsFolder = nil
+local function getBoatsFolder()
+    if _boatsFolder and _boatsFolder.Parent then return _boatsFolder end
+    _boatsFolder = workspace:FindFirstChild("Boats")
+    return _boatsFolder
+end
+
+-- Returns true if the character's HumanoidRootPart is within BOAT_PROX
+-- studs of any boat's Root part, or if the character is parented inside a boat.
+local function isNearBoat(rootPart)
+    if not rootPart then return false end
+    local plrPos = rootPart.Position
+
+    local folder = getBoatsFolder()
+    if folder then
+        for _, boat in ipairs(folder:GetChildren()) do
+            local boatRoot = boat:FindFirstChild("Root") or boat.PrimaryPart or boat:FindFirstChildWhichIsA("BasePart")
+            if boatRoot then
+                local diff = boatRoot.Position - plrPos
+                local distSq = diff.X * diff.X + diff.Y * diff.Y + diff.Z * diff.Z
+                if distSq <= BOAT_PROX_SQ then return true end
+            end
+        end
     end
+
+    local char = rootPart.Parent
+    if char and char.Parent and char.Parent ~= workspace then
+        local pName = char.Parent.Name:lower()
+        if pName:find("boat") or pName:find("dinghy") then
+            return true
+        end
+    end
+
     return false
 end
 
@@ -493,9 +518,11 @@ task.spawn(function()
             local rootPart = char and char:FindFirstChild("HumanoidRootPart")
             local isInUS   = rootPart and (rootPart.Position.X < BORDER_X) or false
 
-            -- Boat smuggler = civilian, in US, seated in a Boat model, AND flagged
-            local inBoatNow      = isInUS and isInBoat(char)
-            local isBoatSmuggler = inBoatNow and isCiv and (isIllegal or wantedLevel > 0)
+            -- Live Boat Smuggler Detection:
+            -- Only true while the civilian is actively on/near a boat.
+            -- Once they step off the boat, this immediately becomes false!
+            local inBoatNow      = isCiv and rootPart and isNearBoat(rootPart) or false
+            local isBoatSmuggler = inBoatNow and isCiv
 
             local tName = plr.Team and plr.Team.Name or "Civilian"
 
@@ -507,7 +534,7 @@ task.spawn(function()
                 elseif aptLook then
                     include = ownsApt and (wantedLevel > 0 or isIllegal)
                 else
-                    include = wantedLevel > 0 or isIllegal
+                    include = wantedLevel > 0 or isIllegal or isBoatSmuggler
                 end
 
                 if include then
@@ -529,6 +556,7 @@ task.spawn(function()
             if char then
                 local showESP = false
                 if boatLook then
+                    -- In Boat Smug mode: only show ESP for players actively on/near boats!
                     showESP = isBoatSmuggler
                 elseif aptLook then
                     showESP = isCiv and ownsApt and not isCop and (wantedLevel > 0 or isIllegal)
